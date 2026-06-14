@@ -61,15 +61,22 @@ EDITS: list[tuple[str, list[str], str, str]] = [
 ]
 
 
-def insert_after_anchor(text: str, anchors: list[str], block: str) -> str | None:
-    """Insert `block` after the first matching anchor line."""
+def insert_anchored(text: str, anchors: list[str], block: str) -> tuple[str, str] | None:
+    """Insert `block` immediately before the first matching anchor line.
+
+    Inserting *before* the anchor (rather than after) is what makes this
+    robust to multi-line dict values: the anchor is always the start of a
+    complete, well-formed entry, so we land cleanly between two entries and
+    the dict stays syntactically valid whether the sibling is single-line
+    (`"k": ("m", "C"),`) or multi-line (`"k": (\n ...\n ),`).
+    """
     for anchor in anchors:
         idx = text.find(anchor)
         if idx >= 0:
-            eol = text.find("\n", idx)
-            if eol < 0:
-                eol = len(text)
-            return text[: eol + 1] + block.lstrip("\n") + text[eol + 1 :], anchor
+            # back up to the start of the line containing the anchor
+            bol = text.rfind("\n", 0, idx)
+            bol = 0 if bol < 0 else bol + 1
+            return text[:bol] + block + "\n" + text[bol:], anchor
     return None
 
 
@@ -82,14 +89,14 @@ def register(rel: str, anchors: list[str], block: str, marker: str) -> bool:
     if marker in text:
         print(f"  [skip] {rel}: {marker!r} already present")
         return True
-    result = insert_after_anchor(text, anchors, block)
+    result = insert_anchored(text, anchors, block)
     if result is None:
         print(f"  [WARN] {rel}: none of {anchors} found — skipping. "
               f"Base differs; insert manually.", file=sys.stderr)
         return False
     updated, used = result
     path.write_text(updated)
-    print(f"  [ok]   {rel}: inserted {marker!r} after {used!r}")
+    print(f"  [ok]   {rel}: inserted {marker!r} before {used!r}")
     return True
 
 
